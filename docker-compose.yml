@@ -21,63 +21,99 @@ services:
       - websocket
       - api
       - swagger-ui
+
   adb:
     image: sorccu/adb:latest
     restart: unless-stopped
     privileged: true
     volumes:
       - /dev/bus/usb:/dev/bus/usb
+
   rethinkdb:
     image: rethinkdb:2.3
     restart: unless-stopped
     volumes:
       - rethinkdb:/data
+
   app:
     image: rzrnt/stf:mk-1
     restart: unless-stopped
     environment:
-      - RETHINKDB_PORT_28015_TCP
-      - SECRET
-    command: stf app --auth-url http://${PUBLIC_IP}/auth/mock/ --websocket-url ws://${PUBLIC_IP}/ --port 3000
+      RETHINKDB_PORT_28015_TCP: ${RETHINKDB_PORT_28015_TCP}
+      SECRET: ${SECRET}
+      STF_APP_AUTH_URL: http://${PUBLIC_IP}/auth/mock/
+      STF_APP_WEBSOCKET_URL: ws://${PUBLIC_IP}/
+      STF_APP_PORT: 3000
+    command: stf app
     depends_on:
       - rethinkdb
       - auth
       - websocket
+
   auth:
     image: rzrnt/stf:mk-1
     restart: unless-stopped
     environment:
-      - SECRET
-    command: stf auth-mock --app-url http://${PUBLIC_IP}/ --port 3000
+      SECRET: ${SECRET}
+      STF_AUTH_MOCK_SECRET: ${SECRET}
+      STF_AUTH_MOCK_APP_URL:  http://${PUBLIC_IP}/
+      STF_AUTH_MOCK_PORT: 3000
+    command: stf auth-mock
+
   processor:
     image: rzrnt/stf:mk-1
     restart: unless-stopped
     environment:
-      - RETHINKDB_PORT_28015_TCP
-    command: stf processor --connect-app-dealer tcp://triproxy:7160 --connect-dev-dealer tcp://dev-triproxy:7260
+      RETHINKDB_PORT_28015_TCP: ${RETHINKDB_PORT_28015_TCP}
+      STF_PROCESSOR_CONNECT_APP_DEALER: tcp://triproxy:7160
+      STF_PROCESSOR_CONNECT_DEV_DEALER: tcp://dev-triproxy:7260
+    command: stf processor
     depends_on:
       - rethinkdb
       - triproxy
       - dev-triproxy
+
   triproxy:
     image: rzrnt/stf:mk-1
     restart: unless-stopped
-    command: stf triproxy app --bind-pub "tcp://*:7150" --bind-dealer "tcp://*:7160" --bind-pull "tcp://*:7170"
+    environment:
+      STF_TRIPROXY_BIND_PUB: tcp://*:7150
+      STF_TRIPROXY_BIND_DEALER: tcp://*:7160
+      STF_TRIPROXY_BIND_PULL: tcp://*:7170
+    command: stf triproxy app
+
   dev-triproxy:
     image: rzrnt/stf:mk-1
     restart: unless-stopped
-    command: stf triproxy dev --bind-pub "tcp://*:7250" --bind-dealer "tcp://*:7260" --bind-pull "tcp://*:7270"
+    environment:
+      STF_TRIPROXY_BIND_PUB: tcp://*:7250
+      STF_TRIPROXY_BIND_DEALER: tcp://*:7260
+      STF_TRIPROXY_BIND_PULL: tcp://*:7270
+    command: stf triproxy dev
+
   migrate:
     image: rzrnt/stf:mk-1
     environment:
-      - RETHINKDB_PORT_28015_TCP
+      RETHINKDB_PORT_28015_TCP: ${RETHINKDB_PORT_28015_TCP}
     command: stf migrate
     depends_on:
       - rethinkdb
+
   provider:
     image: rzrnt/stf:mk-1
     restart: unless-stopped
-    command: stf provider --name ${STATION_NAME} --connect-sub tcp://dev-triproxy:7250 --connect-push tcp://dev-triproxy:7270 --storage-url http://${PUBLIC_IP}/ --public-ip ${PUBLIC_IP} --heartbeat-interval 10000 --screen-ws-url-pattern "ws://${PUBLIC_IP}/d/nuc/<%= serial %>/<%= publicPort %>/" --adb-host adb --min-port 7400 --max-port 7700
+    environment:
+      STF_PROVIDER_CONNECT_SUB: tcp://dev-triproxy:7250
+      STF_PROVIDER_NAME: ${STATION_NAME}
+      STF_PROVIDER_CONNECT_PUSH: tcp://dev-triproxy:7270
+      STF_PROVIDER_STORAGE_URL: http://${PUBLIC_IP}/
+      STF_PROVIDER_PUBLIC_IP: ${PUBLIC_IP}
+      STF_PROVIDER_HEARTBEAT_INTERVAL: 10000
+      STF_PROVIDER_SCREEN_WS_URL_PATTERN: ws://${PUBLIC_IP}/d/nuc/<%= serial %>/<%= publicPort %>/
+      STF_PROVIDER_ADB_HOST: adb
+      STF_PROVIDER_MIN_PORT: 7400
+      STF_PROVIDER_MAX_PORT: 7700
+    command: stf provider
     ports:
       - 7400-7700:7400-7700
     depends_on:
@@ -85,59 +121,84 @@ services:
       - dev-triproxy
       - triproxy
       - storage-temp
+
   reaper:
     image: rzrnt/stf:mk-1
     restart: unless-stopped
     environment:
-      - RETHINKDB_PORT_28015_TCP
+      RETHINKDB_PORT_28015_TCP: ${RETHINKDB_PORT_28015_TCP}
+      STF_REAPER_CONNECT_PUSH: tcp://dev-triproxy:7270
+      STF_REAPER_CONNECT_SUB:  tcp://triproxy:7150
+      STF_REAPER_HEARTBEAT_TIMEOUT: 30000
     depends_on:
       - migrate
       - rethinkdb
       - dev-triproxy
       - triproxy
-    command: stf reaper dev --connect-push tcp://dev-triproxy:7270 --connect-sub tcp://triproxy:7150 --heartbeat-timeout 30000
+    command: stf reaper dev
+
   storage-plugin-apk:
     image: rzrnt/stf:mk-1
     restart: unless-stopped
-    command: stf storage-plugin-apk --port 3000 --storage-url http://${PUBLIC_IP}/
+    environment:
+      STF_STORAGE_PLUGIN_APK_PORT: 3000
+      STF_STORAGE_PLUGIN_APK_STORAGE_URL: http://${PUBLIC_IP}/
+    command: stf storage-plugin-apk
     depends_on:
       - storage-temp
+
   storage-plugin-image:
     image: rzrnt/stf:mk-1
     restart: unless-stopped
-    command: stf storage-plugin-image --port 3000 --storage-url http://${PUBLIC_IP}/
+    environment:
+      STF_STORAGE_PLUGIN_IMAGE_PORT: 3000
+      STF_STORAGE_PLUGIN_IMAGE_STORAGE_URL: http://${PUBLIC_IP}/
+    command: stf storage-plugin-image
     depends_on:
       - storage-temp
+
   storage-temp:
     build: storage-temp/
     restart: unless-stopped
     volumes:
       - storage-temp:/app/data
-    command: stf storage-temp --port 3000 --save-dir /app/data
+    environment:
+      STF_STORAGE_TEMP_PORT: 3000
+    command: stf storage-temp --save-dir /app/data
+
   websocket:
     image: rzrnt/stf:mk-1
     restart: unless-stopped
     environment:
-      - SECRET
-      - RETHINKDB_PORT_28015_TCP
-    command: stf websocket --port 3000 --storage-url http://${PUBLIC_IP}/ --connect-sub tcp://triproxy:7150 --connect-push tcp://triproxy:7170
+      SECRET: ${SECRET}
+      RETHINKDB_PORT_28015_TCP: ${RETHINKDB_PORT_28015_TCP}
+      STF_WEBSOCKET_PORT: 3000
+      STF_WEBSOCKET_STORAGE_URL: http://${PUBLIC_IP}/
+      STF_WEBSOCKET_CONNECT_SUB: tcp://triproxy:7150
+      STF_WEBSOCKET_CONNECT_PUSH: tcp://triproxy:7170
+    command: stf websocket
     depends_on:
       - migrate
       - rethinkdb
       - storage-temp
       - triproxy
       - dev-triproxy
+
   api:
     image: rzrnt/stf:mk-1
     restart: unless-stopped
     environment:
-      - SECRET
-      - RETHINKDB_PORT_28015_TCP
-    command: stf api --port 3000 --connect-sub tcp://triproxy:7150 --connect-push tcp://triproxy:7170
+      SECRET: ${SECRET}
+      RETHINKDB_PORT_28015_TCP: ${RETHINKDB_PORT_28015_TCP}
+      STF_API_PORT: 3000
+      STF_API_CONNECT_SUB: tcp://triproxy:7150
+      STF_API_CONNECT_PUSH: tcp://triproxy:7170
+    command: stf api
     depends_on:
       - migrate
       - rethinkdb
       - triproxy
+
   swagger-ui:
     image: swaggerapi/swagger-ui
     ports:
