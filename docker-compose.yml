@@ -1,4 +1,4 @@
-version: '2'
+version: '3.2'
 
 volumes:
   rethinkdb:
@@ -202,7 +202,18 @@ services:
   swagger-ui:
     image: swaggerapi/swagger-ui
     ports:
-      - "8080:8080"
+      - 8080:8080
     environment:
       URL: http://${PUBLIC_IP}/api/v1/swagger.json
       BASE_URL: /
+  
+  chateau:
+    image: hronom/docker-chateau
+    environment:
+      RETHINKDB_HOST: rethinkdb
+      RETHINKDB_PORT: 28015
+      RETHINKDB_AUTH_KEY:
+    ports:
+      - 3000:3000
+    depends_on:
+      - rethinkdb
